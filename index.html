@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BLDC Motor Thrust & Performance Test Stand</title>
+  <!-- Google Fonts: Orbitron for sci-fi telemetry, Rajdhani & Inter for crisp UI -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Chart.js for real-time telemetry graphs -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="electrical-theme">
+
+  <!-- Dynamic Electric Circuit & Particle Background -->
+  <div class="bg-circuit-overlay"></div>
+  <div class="bg-glow-orb glow-cyan"></div>
+  <div class="bg-glow-orb glow-amber"></div>
+  <div class="bg-glow-orb glow-purple"></div>
+
+  <!-- ========================================================================= -->
+  <!-- 1. LOGIN PAGE (Modal / Screen) - Remembers login state once authenticated -->
+  <!-- ========================================================================= -->
+  <section id="loginScreen" class="screen-view active">
+    <div class="login-container glass-card">
+      <div class="login-header">
+        <div class="brand-badge">
+          <i class="fa-solid fa-bolt-lightning pulse-icon"></i>
+          <span>AERO-ELEC TELEMETRY</span>
+        </div>
+        <h1 data-i18n="login_title">BLDC Test Stand Portal</h1>
+        <p data-i18n="login_subtitle">Authenticate to access real-time motor thrust, current, and RPM telemetry.</p>
+      </div>
+
+      <div class="login-graphic">
+        <img src="assets/electric_circuit.jpg" alt="Electrical Circuit" class="circuit-thumb">
+      </div>
+
+      <form id="loginForm" class="auth-form" onsubmit="handleLogin(event)">
+        <div class="input-group">
+          <label for="username">
+            <i class="fa-solid fa-user-astronaut"></i> <span data-i18n="lbl_username">Operator ID / Username</span>
+          </label>
+          <div class="input-wrapper">
+            <input type="text" id="username" placeholder="e.g. admin or engineer" required autocomplete="username" value="admin">
+            <i class="fa-solid fa-shield-halved field-icon"></i>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="password">
+            <i class="fa-solid fa-key"></i> <span data-i18n="lbl_password">Security Key / Password</span>
+          </label>
+          <div class="input-wrapper">
+            <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password" value="thrust2026">
+            <button type="button" class="eye-toggle" onclick="togglePasswordVisibility()">
+              <i class="fa-solid fa-eye" id="passwordEyeIcon"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="login-extras">
+          <label class="remember-label">
+            <input type="checkbox" id="rememberMe" checked>
+            <span class="custom-check"></span>
+            <span data-i18n="lbl_remember">Remember me on this workstation</span>
+          </label>
+          <button type="button" class="link-btn" onclick="quickFillDemo()" data-i18n="btn_quick_fill">
+            Quick Auto-Fill
+          </button>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-glow w-100">
+          <i class="fa-solid fa-arrow-right-to-bracket"></i>
+          <span data-i18n="btn_login">Authorize & Enter Dashboard</span>
+        </button>
+
+        <div class="auth-hint">
+          <i class="fa-solid fa-circle-info"></i>
+          <span data-i18n="login_hint">Default login: <strong>admin</strong> / <strong>thrust2026</strong> (Saved in browser)</span>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- ========================================================================= -->
+  <!-- 2. MAIN APPLICATION (Slides: Dashboard & History)                         -->
+  <!-- ========================================================================= -->
+  <section id="appScreen" class="screen-view">
+    
+    <!-- Top Navigation Bar (Glassmorphic) -->
+    <header class="app-header glass-card">
+      <div class="header-left">
+        <div class="logo-cluster">
+          <div class="rotating-prop-icon">
+            <i class="fa-solid fa-fan fa-spin" id="navPropIcon"></i>
+          </div>
+          <div class="titles">
+            <div class="eyebrow" data-i18n="app_category">S5 MINI PROJECT • EEE / ROBOTICS</div>
+            <h1 class="main-title" data-i18n="app_title">BLDC MOTOR THRUST TEST STAND</h1>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center Slide Switcher Tabs -->
+      <nav class="slide-nav">
+        <button class="slide-tab-btn active" id="tabDashboard" onclick="switchSlide('dashboard')">
+          <i class="fa-solid fa-gauge-high"></i>
+          <span data-i18n="tab_dashboard">Live Dashboard</span>
+        </button>
+        <button class="slide-tab-btn" id="tabHistory" onclick="switchSlide('history')">
+          <i class="fa-solid fa-chart-line"></i>
+          <span data-i18n="tab_history">History & Analytics</span>
+        </button>
+      </nav>
+
+      <!-- Right Controls: Language Selector, Serial Connection Status, User Profile -->
+      <div class="header-right">
+        <!-- Language Selector (5+ Languages) -->
+        <div class="lang-dropdown-wrapper">
+          <button class="lang-selector-btn glass-pill" id="langBtn" onclick="toggleLangDropdown()">
+            <i class="fa-solid fa-globe"></i>
+            <span id="currentLangLabel">English</span>
+            <i class="fa-solid fa-chevron-down arrow-icon"></i>
+          </button>
+          <div class="lang-menu glass-card" id="langMenu">
+            <button onclick="selectLanguage('en')" class="lang-option active" data-lang="en">
+              <span class="flag">🇺🇸</span> English (EN)
+            </button>
+            <button onclick="selectLanguage('ta')" class="lang-option" data-lang="ta">
+              <span class="flag">🇮🇳</span> தமிழ் (Tamil)
+            </button>
+            <button onclick="selectLanguage('hi')" class="lang-option" data-lang="hi">
+              <span class="flag">🇮🇳</span> हिन्दी (Hindi)
+            </button>
+            <button onclick="selectLanguage('es')" class="lang-option" data-lang="es">
+              <span class="flag">🇪🇸</span> Español (Spanish)
+            </button>
+            <button onclick="selectLanguage('de')" class="lang-option" data-lang="de">
+              <span class="flag">🇩🇪</span> Deutsch (German)
+            </button>
+            <button onclick="selectLanguage('fr')" class="lang-option" data-lang="fr">
+              <span class="flag">🇫🇷</span> Français (French)
+            </button>
+          </div>
+        </div>
+
+        <!-- Hardware Connect / Simulator Button -->
+        <div class="connection-cluster">
+          <button class="btn btn-serial" id="serialConnectBtn" onclick="toggleHardwareConnection()">
+            <i class="fa-solid fa-microchip"></i>
+            <span id="serialBtnText" data-i18n="btn_connect_arduino">Connect Arduino</span>
+          </button>
+          <div class="status-indicator-badge disconnected" id="connectionBadge">
+            <span class="status-dot"></span>
+            <span id="connectionStatusText" data-i18n="status_standby">Standby</span>
+          </div>
+        </div>
+
+        <!-- Mode Toggle (Hardware / Simulator) -->
+        <button class="mode-toggle-btn glass-pill" id="simToggleBtn" onclick="toggleSimMode()" title="Switch Simulation / Hardware">
+          <i class="fa-solid fa-sliders"></i>
+          <span id="simModeText">SIM: OFF</span>
+        </button>
+
+        <!-- User Logout Button -->
+        <button class="btn-icon-logout" onclick="handleLogout()" title="Log out">
+          <i class="fa-solid fa-power-off"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Container with Slide Transition Carousel -->
+    <main class="slides-viewport">
+
+      <!-- ========================================================================= -->
+      <!-- SLIDE 1: LIVE DASHBOARD (4 METRIC BOXES, MOTOR GRAPHIC, LIVE GAUGES)      -->
+      <!-- ========================================================================= -->
+      <section id="slideDashboard" class="slide-page active">
+        
+        <!-- Welcome Hero Banner -->
+        <div class="welcome-banner glass-card">
+          <div class="banner-content">
+            <div class="welcome-pill">
+              <i class="fa-solid fa-satellite-dish"></i>
+              <span data-i18n="telemetry_active">LIVE ARDUINO UNO HARDWARE TELEMETRY</span>
+            </div>
+            <h2 data-i18n="hero_title">Welcome to BLDC Thrust Stand Dashboard</h2>
+            <p data-i18n="hero_subtitle">
+              Acquiring real-time aerodynamic thrust, HX711 raw load cell force, ACS712 current draw, and optical interrupt rotational speed (RPM).
+            </p>
+          </div>
+          <div class="banner-meta">
+            <div class="meta-item">
+              <span class="meta-label" data-i18n="meta_protocol">Protocol</span>
+              <span class="meta-val">UART 9600 Baud</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label" data-i18n="meta_sampling">Sample Rate</span>
+              <span class="meta-val">500 ms (2 Hz)</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label" data-i18n="meta_mcu">Target MCU</span>
+              <span class="meta-val">ATmega328P</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- THE 4 CORE METRIC BOXES (Requested by User) -->
+        <div class="metrics-grid">
+
+          <!-- 1. THRUST CARD -->
+          <div class="metric-card glass-card thrust-glow">
+            <div class="card-corner-decor"></div>
+            <div class="card-header">
+              <div class="metric-icon-box cyan">
+                <i class="fa-solid fa-arrows-up-to-line"></i>
+              </div>
+              <div class="metric-header-text">
+                <span class="metric-tag" data-i18n="tag_aerodynamic">AERODYNAMIC FORCE</span>
+                <h3 data-i18n="metric_thrust">Thrust Force</h3>
+              </div>
+              <div class="unit-toggle" onclick="toggleThrustUnit()">
+                <span class="unit-badge active" id="unitGrams">g</span>
+                <span class="unit-separator">/</span>
+                <span class="unit-badge" id="unitNewtons">N</span>
+              </div>
+            </div>
+
+            <div class="card-body">
+              <div class="primary-reading">
+                <span class="digital-value" id="valThrust">0.0</span>
+                <span class="digital-unit" id="lblThrustUnit">g</span>
+              </div>
+              
+              <!-- Progress Bar Gauge -->
+              <div class="gauge-bar-wrapper">
+                <div class="gauge-bar cyan" id="barThrust" style="width: 0%"></div>
+              </div>
+
+              <div class="reading-subtext">
+                <div class="sub-stat">
+                  <span class="sub-label" data-i18n="sub_peak_thrust">Peak:</span>
+                  <span class="sub-val" id="peakThrust">0.0 g</span>
+                </div>
+                <div class="sub-stat">
+                  <span class="sub-label" data-i18n="sub_converted">Newtons:</span>
+                  <span class="sub-val" id="valThrustNewtons">0.00 N</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="card-footer">
+              <span class="footer-chip"><i class="fa-solid fa-scale-balanced"></i> HX711 Calibrated</span>
+              <button class="btn-micro" onclick="tareLoadCell()" title="Re-Zero / Tare Load Cell">
+                <i class="fa-solid fa-rotate-left"></i> <span data-i18n="btn_tare">Tare</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. LOAD / RAW VALUE CARD -->
+          <div class="metric-card glass-card load-glow">
+            <div class="card-corner-decor"></div>
+            <div class="card-header">
+              <div class="metric-icon-box purple">
+                <i class="fa-solid fa-weight-hanging"></i>
+              </div>
+              <div class="metric-header-text">
+                <span class="metric-tag" data-i18n="tag_sensor">LOAD CELL RAW ADC</span>
+                <h3 data-i18n="metric_raw_load">Raw Load Value</h3>
+              </div>
+              <div class="status-pill purple">24-BIT</div>
+            </div>
+
+            <div class="card-body">
+              <div class="primary-reading">
+                <span class="digital-value" id="valRaw">86511</span>
+                <span class="digital-unit">counts</span>
+              </div>
+
+              <!-- Progress Bar Gauge -->
+              <div class="gauge-bar-wrapper">
+                <div class="gauge-bar purple" id="barRaw" style="width: 25%"></div>
+              </div>
+
+              <div class="reading-subtext">
+                <div class="sub-stat">
+                  <span class="sub-label" data-i18n="sub_zero_offset">Zero Baseline:</span>
+                  <span class="sub-val" id="valZeroOffset">86,511</span>
+                </div>
+                <div class="sub-stat">
+                  <span class="sub-label" data-i18n="sub_scale_factor">Scale Factor:</span>
+                  <span class="sub-val">68.81</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="card-footer">
+              <span class="footer-chip"><i class="fa-solid fa-microchip"></i> Pin DT:4 / SCK:5</span>
+              <span class="reading-trend" id="loadDelta">+0</span>
+            </div>
+          </div>
+
+          <!-- 3. CURRENT CARD -->
+          <div class="metric-card glass-card current-glow">
+            <div class="card-corner-decor"></div>
+            <div class="card-header">
+              <div class="metric-icon-box amber">
+                <i class="fa-solid fa-bolt"></i>
+              </div>
+              <div class="metric-header-text">
+                <span class="metric-tag" data-i18n="tag_electrical">CURRENT SENSOR</span>
+                <h3 data-i18n="metric_current">Current Consumption</h3>
+              </div>
+              <div class="status-pill amber">ACS712</div>
+            </div>
+
+            <div class="card-body">
+              <div class="primary-reading">
+                <span class="digital-value" id="valCurrent">0.00</span>
+                <span class="digital-unit">A</span>
+              </div>
+
+              <!-- Progress Bar Gauge -->
+              <div class="gauge-bar-wrapper">
+                <div class="gauge-bar amber" id="barCurrent" style="width: 0%"></div>
+              </div>
+
+              <div class="reading-subtext">
+                <div class="sub-stat">
+                  <span class="sub-label" data-i18n="sub_power">Electrical Power:</span>
+                  <span class="sub-val" id="valPower">0.0 W</span>
+                </div>
+                <div class="sub-stat">
+                  <span class="sub-label" data-i18n="sub_battery">Voltage (3S):</span>
+                  <select id="batteryVoltageSelect" class="mini-select" onchange="updatePowerCalc()">
+                    <option value="11.1">3S (11.1V)</option>
+                    <option value="14.8">4S (14.8V)</option>
+                    <option value="22.2">6S (22.2V)</option>
+                    <option value="12.0">Bench 12V</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="card-footer">
+              <span class="footer-chip"><i class="fa-solid fa-wave-square"></i> Analog Pin A0</span>
+              <span class="footer-chip" id="peakCurrentChip">Peak: 0.00 A</span>
+            </div>
+          </div>
+
+          <!-- 4. ROTATIONS PER MINUTE (RPM) CARD -->
+          <div class="metric-card glass-card rpm-glow">
+            <div class="card-corner-decor"></div>
+            <div class="card-header">
+              <div class="metric-icon-box green">
+                <i class="fa-solid fa-gauge"></i>
+              </div>
+              <div class="metric-header-text">
+                <span class="metric-tag" data-i18n="tag_speed">OPTICAL TACHOMETER</span>
+                <h3 data-i18n="metric_rpm">Rotations Per Minute</h3>
+              </div>
+              <div class="status-pill green">RPM</div>
+            </div>
+
+            <div class="card-body">
+              <div class="primary-reading">
+                <span class="digital-value" id="valRPM">0</span>
+                <span class="digital-unit">RPM</span>
+              </div>
+
+              <!-- Progress Bar Gauge -->
+              <div class="gauge-bar-wrapper">
+                <div class="gauge-bar green" id="barRPM" style="width: 0%"></div>
+              </div>
+
+              <div class="reading-subtext">
+                <div class="sub-stat">
+                  <span class="sub-label" data-i18n="sub_peak_rpm">Peak Speed:</span>
+                  <span class="sub-val" id="peakRPM">0 RPM</span>
+                </div>
+                <div class="sub-stat">
+                  <span class="sub-label" data-i18n="sub_frequency">Frequency:</span>
+                  <span class="sub-val" id="valFreq">0.0 Hz</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="card-footer">
+              <span class="footer-chip"><i class="fa-solid fa-bullseye"></i> Pin D2 (INT0)</span>
+              <span class="efficiency-chip" id="efficiencyChip" title="Grams of thrust per Watt">
+                <i class="fa-solid fa-leaf"></i> 0.0 g/W
+              </span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Interactive Visual Motor Hub & Controls -->
+        <div class="visual-hub-grid">
+          
+          <!-- Motor & Propeller Glass Visualizer -->
+          <div class="visual-card glass-card">
+            <div class="visual-card-header">
+              <div class="flex-row gap-2 align-center">
+                <i class="fa-solid fa-circle-nodes text-cyan"></i>
+                <h3 data-i18n="motor_visualizer_title">BLDC Propulsion Dynamics</h3>
+              </div>
+              <span class="live-pill"><span class="blink-dot"></span> <span data-i18n="state_dynamic">DYNAMIC</span></span>
+            </div>
+
+            <div class="motor-stage">
+              <!-- Animated Propeller & Visual Rotor -->
+              <div class="propeller-disc-container">
+                <div class="rotor-glow-ring" id="rotorGlow"></div>
+                <div class="propeller-spin-hub" id="propellerHub">
+                  <div class="prop-blade blade-1"></div>
+                  <div class="prop-blade blade-2"></div>
+                  <div class="motor-center-bell">
+                    <span class="motor-label">BLDC</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="motor-specs-overlay">
+                <div class="spec-pill">
+                  <span class="spec-title" data-i18n="spec_thrust_ratio">Thrust / Weight</span>
+                  <span class="spec-number" id="thrustRatio">0.00x</span>
+                </div>
+                <div class="spec-pill">
+                  <span class="spec-title" data-i18n="spec_efficiency">Aero Efficiency</span>
+                  <span class="spec-number text-green" id="aeroEff">0.0 g/W</span>
+                </div>
+                <div class="spec-pill">
+                  <span class="spec-title" data-i18n="spec_blade_speed">Tip Speed</span>
+                  <span class="spec-number text-amber" id="tipSpeed">0.0 m/s</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="motor-card-footer">
+              <img src="assets/bldc_thrust_stand.jpg" alt="BLDC Stand" class="bench-photo-preview">
+              <div class="motor-desc">
+                <h4 data-i18n="desc_stand_title">Precision Aerospace Test Rig</h4>
+                <p data-i18n="desc_stand_text">Dual-axis load sensor configuration measuring vertical thrust vector with optical beam interrupt RPM counting.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Telemetry Mini-Chart & Live Serial Terminal Drawer -->
+          <div class="terminal-card glass-card">
+            <div class="visual-card-header">
+              <div class="flex-row gap-2 align-center">
+                <i class="fa-solid fa-terminal text-amber"></i>
+                <h3 data-i18n="live_serial_stream">Live Hardware Serial Stream</h3>
+              </div>
+              <div class="terminal-actions">
+                <button class="btn-micro" onclick="clearTerminal()" data-i18n="btn_clear">Clear</button>
+                <button class="btn-micro" onclick="toggleAutoScroll()" id="autoScrollBtn">Auto-Scroll: ON</button>
+              </div>
+            </div>
+
+            <div class="terminal-viewport" id="serialTerminal">
+              <div class="terminal-line system-msg">
+                [SYSTEM] Web Serial Engine initialized. Ready for Arduino Uno at 9600 baud.
+              </div>
+              <div class="terminal-line system-msg">
+                [HINT] Click "Connect Arduino" above to pair with your USB COM port, or enable Simulator.
+              </div>
+            </div>
+
+            <!-- Simulator Control (Revealed when Simulator Mode is Active) -->
+            <div class="sim-control-dock" id="simControlDock">
+              <div class="sim-dock-header">
+                <span class="badge-amber"><i class="fa-solid fa-gamepad"></i> <span data-i18n="sim_control">Simulator Throttle Control</span></span>
+                <span class="throttle-readout" id="throttleVal">0%</span>
+              </div>
+              <input type="range" min="0" max="100" value="0" class="throttle-slider" id="throttleSlider" oninput="updateThrottle(this.value)">
+              <div class="slider-labels">
+                <span>0% (Idle)</span>
+                <span>25%</span>
+                <span>50% (Cruise)</span>
+                <span>75%</span>
+                <span>100% (Full Thrust)</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- ========================================================================= -->
+      <!-- SLIDE 2: HISTORY & ANALYTICS (CHARTS, LOGS, EXPORT)                       -->
+      <!-- ========================================================================= -->
+      <section id="slideHistory" class="slide-page">
+        
+        <!-- History Header & Stats Bar -->
+        <div class="history-hero glass-card">
+          <div class="history-hero-text">
+            <h2 data-i18n="history_title">Telemetry History & Performance Analytics</h2>
+            <p data-i18n="history_subtitle">Comprehensive historical tracking of Thrust (g), Current (A), and Rotational Velocity (RPM) over test runs.</p>
+          </div>
+          <div class="history-actions">
+            <button class="btn btn-secondary glass-pill" onclick="exportDataCSV()">
+              <i class="fa-solid fa-file-csv"></i>
+              <span data-i18n="btn_export_csv">Export Data (CSV)</span>
+            </button>
+            <button class="btn btn-danger glass-pill" onclick="clearTelemetryHistory()">
+              <i class="fa-solid fa-trash-can"></i>
+              <span data-i18n="btn_clear_history">Clear History</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 3 Performance Summary Badges -->
+        <div class="history-summary-grid">
+          <div class="summary-stat-box glass-card cyan-border">
+            <div class="stat-icon-wrap cyan"><i class="fa-solid fa-arrows-up-to-line"></i></div>
+            <div class="stat-details">
+              <span class="stat-tag" data-i18n="hist_max_thrust">MAXIMUM RECORDED THRUST</span>
+              <div class="stat-big-num" id="histMaxThrust">0.0 <span class="unit">g</span></div>
+              <span class="stat-timestamp" id="histMaxThrustTime">--:--:--</span>
+            </div>
+          </div>
+
+          <div class="summary-stat-box glass-card amber-border">
+            <div class="stat-icon-wrap amber"><i class="fa-solid fa-bolt"></i></div>
+            <div class="stat-details">
+              <span class="stat-tag" data-i18n="hist_max_current">PEAK CURRENT DRAW</span>
+              <div class="stat-big-num" id="histMaxCurrent">0.00 <span class="unit">A</span></div>
+              <span class="stat-timestamp" id="histMaxCurrentTime">--:--:--</span>
+            </div>
+          </div>
+
+          <div class="summary-stat-box glass-card green-border">
+            <div class="stat-icon-wrap green"><i class="fa-solid fa-gauge-high"></i></div>
+            <div class="stat-details">
+              <span class="stat-tag" data-i18n="hist_max_rpm">MAX ROTATIONAL VELOCITY</span>
+              <div class="stat-big-num" id="histMaxRPM">0 <span class="unit">RPM</span></div>
+              <span class="stat-timestamp" id="histMaxRPMTime">--:--:--</span>
+            </div>
+          </div>
+
+          <div class="summary-stat-box glass-card purple-border">
+            <div class="stat-icon-wrap purple"><i class="fa-solid fa-calculator"></i></div>
+            <div class="stat-details">
+              <span class="stat-tag" data-i18n="hist_avg_eff">AVG AERODYNAMIC EFFICIENCY</span>
+              <div class="stat-big-num" id="histAvgEfficiency">0.0 <span class="unit">g/W</span></div>
+              <span class="stat-timestamp" data-i18n="hist_samples">Calculated from run</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Real-Time Interactive Charts -->
+        <div class="charts-container-grid">
+          <!-- Main Chart: Thrust vs Time -->
+          <div class="chart-card glass-card">
+            <div class="chart-header">
+              <div class="flex-row gap-2 align-center">
+                <i class="fa-solid fa-chart-area text-cyan"></i>
+                <h4 data-i18n="chart_thrust_title">Thrust Force History (g)</h4>
+              </div>
+              <span class="live-tag cyan" data-i18n="lbl_realtime">REAL-TIME</span>
+            </div>
+            <div class="canvas-wrapper">
+              <canvas id="chartThrust"></canvas>
+            </div>
+          </div>
+
+          <!-- Secondary Chart: Current vs Time -->
+          <div class="chart-card glass-card">
+            <div class="chart-header">
+              <div class="flex-row gap-2 align-center">
+                <i class="fa-solid fa-wave-square text-amber"></i>
+                <h4 data-i18n="chart_current_title">Current Draw History (A)</h4>
+              </div>
+              <span class="live-tag amber" data-i18n="lbl_realtime">REAL-TIME</span>
+            </div>
+            <div class="canvas-wrapper">
+              <canvas id="chartCurrent"></canvas>
+            </div>
+          </div>
+
+          <!-- Tertiary Chart: RPM vs Time -->
+          <div class="chart-card glass-card full-span-chart">
+            <div class="chart-header">
+              <div class="flex-row gap-2 align-center">
+                <i class="fa-solid fa-gauge text-green"></i>
+                <h4 data-i18n="chart_rpm_title">Rotations Per Minute History (RPM) & Power Correlation</h4>
+              </div>
+              <span class="live-tag green" data-i18n="lbl_realtime">REAL-TIME</span>
+            </div>
+            <div class="canvas-wrapper wide-canvas">
+              <canvas id="chartRPM"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Historical Data Table Log -->
+        <div class="history-table-card glass-card">
+          <div class="table-card-header">
+            <div class="flex-row gap-2 align-center">
+              <i class="fa-solid fa-table-list text-purple"></i>
+              <h4 data-i18n="table_title">Recorded Telemetry Samples</h4>
+            </div>
+            <div class="table-count-badge" id="tableRecordCount">0 Records Recorded</div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="telemetry-table" id="telemetryHistoryTable">
+              <thead>
+                <tr>
+                  <th data-i18n="th_time">Timestamp</th>
+                  <th data-i18n="th_raw">Raw ADC</th>
+                  <th data-i18n="th_thrust">Thrust (g)</th>
+                  <th data-i18n="th_thrust_n">Thrust (N)</th>
+                  <th data-i18n="th_current">Current (A)</th>
+                  <th data-i18n="th_power">Power (W)</th>
+                  <th data-i18n="th_rpm">RPM</th>
+                  <th data-i18n="th_eff">Efficiency (g/W)</th>
+                </tr>
+              </thead>
+              <tbody id="telemetryTableBody">
+                <tr class="empty-row">
+                  <td colspan="8" data-i18n="table_empty">No telemetry samples recorded yet. Connect Arduino or start Simulator to capture data.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- Footer with System Info & GitHub Link -->
+    <footer class="app-footer glass-card">
+      <div class="footer-left">
+        <span><i class="fa-solid fa-code-branch"></i> BLDC Thrust Stand Telemetry v2.0 • S5 Mini Project</span>
+      </div>
+      <div class="footer-center">
+        <span>Hardware: Arduino Uno • Sensors: HX711, ACS712, IR Optical</span>
+      </div>
+      <div class="footer-right">
+        <a href="https://github.com/naveenkumarnee24-png" target="_blank" rel="noopener noreferrer" class="footer-link">
+          <i class="fa-brands fa-github"></i> github.com/naveenkumarnee24-png
+        </a>
+      </div>
+    </footer>
+
+  </section>
+
+  <!-- Notification Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- JavaScript Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>

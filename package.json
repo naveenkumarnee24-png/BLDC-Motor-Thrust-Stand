@@ -1,0 +1,27 @@
+{
+  "name": "bldc-motor-thrust-stand",
+  "version": "2.0.0",
+  "description": "Real-time Telemetry Dashboard for BLDC Motor Thrust Test Stand (Arduino Uno, HX711, ACS712, Optical Tachometer)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "bldc",
+    "thrust-stand",
+    "arduino",
+    "web-serial",
+    "hx711",
+    "acs712",
+    "telemetry",
+    "glassmorphism"
+  ],
+  "author": "Naveen Kumar",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.17.0",
+    "cors": "^2.8.5"
+  }
+}
