@@ -1349,33 +1349,31 @@ function showToast(message, type = 'info') {
 }
 
 // ---------------------------------------------------------------------------
-// 13. OPTIONAL WEBSOCKET CLIENT (For Render / Local Node.js Backend)
+// 13. OPTIONAL BACKEND TELEMETRY STREAM (SSE & REST for Render / Local Server)
 // ---------------------------------------------------------------------------
-let backendWs = null;
+let sseSource = null;
 
-function connectBackendWebSocket() {
+function connectBackendTelemetryStream() {
   if (window.location.protocol.startsWith('http')) {
-    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProto}//${window.location.host}`;
-    
     try {
-      backendWs = new WebSocket(wsUrl);
-      backendWs.onopen = () => {
-        console.log('[WS] Connected to backend telemetry server at', wsUrl);
-      };
-      backendWs.onmessage = (event) => {
+      sseSource = new EventSource('/api/telemetry/stream');
+      sseSource.onmessage = (event) => {
         try {
-          const payload = JSON.parse(event.data);
-          if (payload.type === 'TELEMETRY' && payload.data && !serialPort && !isSimMode) {
-            const d = payload.data;
+          const d = JSON.parse(event.data);
+          // Only update if user is not currently using direct USB Web Serial or local Simulator
+          if (d && !serialPort && !isSimMode) {
             applyTelemetryData(d.raw || 86511, d.thrust || 0, d.current || 0, d.rpm || 0);
           }
         } catch (e) {
-          // Non-JSON message ignored
+          // ignore
         }
       };
+      sseSource.onerror = () => {
+        // SSE not active (e.g. static hosting on Vercel) - no problem! Web Serial API is primary.
+        if (sseSource) sseSource.close();
+      };
     } catch (err) {
-      console.log('[WS] Optional backend WebSocket not active.');
+      // Ignore on static environments
     }
   }
 }
@@ -1391,6 +1389,6 @@ window.addEventListener('DOMContentLoaded', () => {
   // Check login state (remember me)
   checkExistingAuth();
 
-  // Try connecting to backend WebSocket (if running on Render / Node.js)
-  connectBackendWebSocket();
+  // Try connecting to backend telemetry stream (if running on Render / Node.js)
+  connectBackendTelemetryStream();
 });

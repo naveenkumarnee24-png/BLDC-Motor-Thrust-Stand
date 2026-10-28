@@ -1,24 +1,29 @@
 /* =========================================================================
-   BLDC MOTOR THRUST TEST STAND - NODE.JS BACKEND SERVER (RENDER / LOCAL)
-   Serves static telemetry web app, REST endpoints, and WebSocket broadcasting.
+   BLDC MOTOR THRUST TEST STAND - ZERO-DEPENDENCY NODE.JS SERVER
+   (Runs immediately with "node server.js" - NO npm install required!)
+   Serves static frontend, REST API, and Server-Sent Events (SSE) telemetry.
    ========================================================================= */
 
-const express = require('express');
 const http = require('http');
+const fs = require('fs');
 const path = require('path');
-const cors = require('cors');
-const { WebSocketServer, WebSocket } = require('ws');
-
-const app = express();
-const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const url = require('url');
 
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname)));
+// MIME types for static files
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.ino': 'text/plain; charset=utf-8'
+};
 
 // In-memory telemetry cache
 let latestTelemetry = {
@@ -33,39 +38,18 @@ let latestTelemetry = {
 
 let telemetryHistory = [];
 const MAX_HISTORY = 300;
+const sseClients = new Set();
 
-// Broadcast helper to all connected WebSocket clients
-function broadcast(data) {
-  const payload = JSON.stringify(data);
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(payload);
-    }
-  });
-}
-
-// WebSocket Connection Handler
-wss.on('connection', (ws) => {
-  console.log(`[WS] Client connected. Total active clients: ${wss.clients.size}`);
-  
-  // Send current telemetry state on connect
-  ws.send(JSON.stringify({ type: 'INIT', data: latestTelemetry }));
-
-  ws.on('message', (message) => {
+function broadcastSSE(data) {
+  const payload = `data: ${JSON.stringify(data)}\n\n`;
+  for (const client of sseClients) {
     try {
-      const parsed = JSON.parse(message);
-      if (parsed.type === 'TELEMETRY_UPDATE') {
-        updateTelemetry(parsed.data);
-      }
+      client.write(payload);
     } catch (err) {
-      console.error('[WS] Error processing message:', err.message);
+      sseClients.delete(client);
     }
-  });
-
-  ws.on('close', () => {
-    console.log(`[WS] Client disconnected. Total active: ${wss.clients.size}`);
-  });
-});
+  }
+}
 
 function updateTelemetry(data) {
   latestTelemetry = {
@@ -79,58 +63,123 @@ function updateTelemetry(data) {
     telemetryHistory.pop();
   }
 
-  broadcast({ type: 'TELEMETRY', data: latestTelemetry });
+  broadcastSSE(latestTelemetry);
 }
 
-// REST Endpoints
-app.get('/api/status', (req, res) => {
-  res.json({
-    status: 'online',
-    system: 'BLDC Motor Thrust Test Stand Backend',
-    connectedClients: wss.clients.size,
-    timestamp: new Date().toISOString()
-  });
-});
+const server = http.createServer((req, res) => {
+  const parsedUrl = url.parse(req.url, true);
+  const pathname = parsedUrl.pathname;
 
-app.get('/api/telemetry/latest', (req, res) => {
-  res.json(latestTelemetry);
-});
+  // CORS Headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-app.get('/api/telemetry/history', (req, res) => {
-  res.json(telemetryHistory);
-});
-
-// Endpoint for receiving telemetry from external bridges or hardware scripts
-app.post('/api/telemetry', (req, res) => {
-  const { raw, thrust, current, rpm, voltage = 11.1 } = req.body;
-  if (thrust === undefined || current === undefined || rpm === undefined) {
-    return res.status(400).json({ error: 'Missing telemetry fields: thrust, current, rpm' });
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
   }
 
-  const pWatts = current * voltage;
-  const eff = pWatts > 0.5 ? thrust / pWatts : 0.0;
+  // --- REST & SSE API ROUTES ---
+  if (pathname === '/api/status' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'online',
+      system: 'BLDC Motor Thrust Test Stand Backend',
+      clients: sseClients.size,
+      timestamp: new Date().toISOString()
+    }));
+    return;
+  }
 
-  updateTelemetry({
-    raw: raw || 86511,
-    thrust: parseFloat(thrust),
-    current: parseFloat(current),
-    rpm: parseInt(rpm, 10),
-    power: parseFloat(pWatts.toFixed(1)),
-    efficiency: parseFloat(eff.toFixed(1))
+  if (pathname === '/api/telemetry/latest' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(latestTelemetry));
+    return;
+  }
+
+  if (pathname === '/api/telemetry/history' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(telemetryHistory));
+    return;
+  }
+
+  // Server-Sent Events (SSE) Stream for real-time telemetry
+  if (pathname === '/api/telemetry/stream' && req.method === 'GET') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    });
+    res.write(`data: ${JSON.stringify(latestTelemetry)}\n\n`);
+    sseClients.add(res);
+
+    req.on('close', () => {
+      sseClients.delete(res);
+    });
+    return;
+  }
+
+  // POST telemetry from external scripts or hardware bridge
+  if (pathname === '/api/telemetry' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body);
+        const { raw, thrust, current, rpm, voltage = 11.1 } = payload;
+        const pWatts = (current || 0) * voltage;
+        const eff = pWatts > 0.5 ? (thrust || 0) / pWatts : 0.0;
+
+        updateTelemetry({
+          raw: raw || 86511,
+          thrust: parseFloat(thrust || 0),
+          current: parseFloat(current || 0),
+          rpm: parseInt(rpm || 0, 10),
+          power: parseFloat(pWatts.toFixed(1)),
+          efficiency: parseFloat(eff.toFixed(1))
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, telemetry: latestTelemetry }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON payload' }));
+      }
+    });
+    return;
+  }
+
+  // --- STATIC FILE SERVING ---
+  let filePath = pathname === '/' ? '/index.html' : pathname;
+  filePath = path.join(__dirname, filePath);
+
+  fs.stat(filePath, (err, stats) => {
+    if (err || !stats.isFile()) {
+      // Fallback to index.html for SPA
+      filePath = path.join(__dirname, 'index.html');
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+
+    fs.readFile(filePath, (readErr, content) => {
+      if (readErr) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('500 Internal Server Error');
+      } else {
+        res.writeHead(200, { 'Content-Type': contentType });
+        res.end(content);
+      }
+    });
   });
-
-  res.json({ success: true, telemetry: latestTelemetry });
-});
-
-// Fallback to index.html for SPA routing
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 server.listen(PORT, () => {
   console.log(`=======================================================`);
   console.log(`🚀 BLDC Thrust Stand Server running on port ${PORT}`);
   console.log(`📡 Access web portal at: http://localhost:${PORT}`);
-  console.log(`🔌 WebSocket Server active on same port`);
+  console.log(`⚡ Real-time SSE Stream at: http://localhost:${PORT}/api/telemetry/stream`);
   console.log(`=======================================================`);
 });
